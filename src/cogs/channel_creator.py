@@ -1,7 +1,9 @@
-import discord
-from discord.ext import commands
+from json import loads
 
-from utils import async_notion_client, Constants
+import discord
+from discord.ext import commands, tasks
+
+from utils import Constants, discord_logger, notion
 
 
 class ChannelCreator(commands.Cog):
@@ -9,10 +11,41 @@ class ChannelCreator(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
+    @tasks.loop(hours=24)
+    async def create_channels(self) -> None:
+        """Used to create the channels based on the different classes in the database if they don't already exist."""
+        database_properties = await notion.databases.retrieve(database_id=Constants.DATABASE_ID)
+        classes = [
+            class_properties["name"].replace(" ", "-").replace("&", "").lower()  # Turn into the format Discord uses for channel names
+            for class_properties in database_properties["properties"]["Class"]["select"]["options"]
+        ]
+
+        guild = self.bot.guilds[0]
+        task_updater_category = discord.utils.get(guild.categories, id=1125906531603464225)
+        current_channels = [channel.name for channel in task_updater_category.text_channels]
+
+        # Recreate channels if the class property changed in the task list.
+        if (
+            [
+                class_name.split("-")[0] for class_name in classes  # Avoid finding differences in emojis
+            ] != [
+                class_name.split("-")[0] for class_name in current_channels
+            ]
+        ):
+            discord_logger.info("Change found in the classes within the task list -- recreating channels.")
+
+            # Delete current channels if there are any
+            for channel in task_updater_category.text_channels:
+                await channel.delete()
+
+            # Create the new channels under the new select types in the Class property
+            for channel_name in classes:
+                await guild.create_text_channel(channel_name, category=task_updater_category)
+
     @commands.Cog.listener()
     async def on_ready(self) -> None:
-        """Used to create the channels based on the different classes in the database if they don't already exist."""
-        pass
+        """Start the task to create the channels based on the current classes in the Notion database."""
+        self.create_channels.start()
 
 
 async def setup(bot: commands.Bot):
