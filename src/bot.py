@@ -17,6 +17,9 @@ class TaskManagerBot(commands.Bot):
     async def setup_hook(self) -> None:
         """Used to load all the cogs into the bot."""
         await self.load_extension("cogs.channel_creator")
+        await self.load_extension("cogs.task_creator")
+        await self.load_extension("cogs.task_reminder")
+
         await self.tree.sync(guild=discord.Object(Constants.GUILD_ID))
 
     async def on_ready(self) -> None:

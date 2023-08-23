@@ -1,9 +1,7 @@
-from json import loads
-
 import discord
 from discord.ext import commands, tasks
 
-from utils import Constants, discord_logger, notion
+from utils import Constants, discord_logger, NotionWrapper
 
 
 class ChannelCreator(commands.Cog):
@@ -14,10 +12,10 @@ class ChannelCreator(commands.Cog):
     @tasks.loop(hours=24)
     async def create_channels(self) -> None:
         """Used to create the channels based on the different classes in the database if they don't already exist."""
-        database_properties = await notion.databases.retrieve(database_id=Constants.DATABASE_ID)
+        notion_wrapper = await NotionWrapper.create()
         classes = [
-            class_properties["name"].replace(" ", "-").replace("&", "").lower()  # Turn into the format Discord uses for channel names
-            for class_properties in database_properties["properties"]["Class"]["select"]["options"]
+            class_name.replace(" ", "-").replace("&", "").lower()  # Turn into the format Discord uses for channel names
+            for class_name in notion_wrapper.properties["Class"].names()
         ]
 
         guild = self.bot.guilds[0]
