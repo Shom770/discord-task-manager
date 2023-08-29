@@ -1,3 +1,4 @@
+canvasapi==3.2.0
 python-dotenv==1.0.0
 discord.py==2.3.1
 notion-client==2.0.0

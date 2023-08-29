@@ -18,7 +18,7 @@ class TaskManagerBot(commands.Bot):
         """Used to load all the cogs into the bot."""
         await self.load_extension("cogs.channel_creator")
         await self.load_extension("cogs.task_creator")
-        await self.load_extension("cogs.task_reminder")
+        await self.load_extension("cogs.assignments_to_tasks")
 
         await self.tree.sync(guild=discord.Object(Constants.GUILD_ID))
 

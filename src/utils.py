@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 from datetime import datetime
 from logging import getLogger
+from operator import itemgetter
 from os import getenv
 
+from canvasapi import Canvas
 from discord import app_commands, Interaction
 from dotenv import load_dotenv
 from notion_client import AsyncClient
@@ -17,6 +19,16 @@ class Constants:
     APPLICATION_ID = 1125900085314715708
     GUILD_ID = 1125903298646515783
     DATABASE_ID = "9ccad614d81e4f2ea561334bc0b7116c"
+    CANVAS_TO_NOTION = {
+        "Adv Sci3 Earth SpSys": "ESS 🌋",
+        "Adv Sci4 Biology": "Biology 🧪",
+        "Algorithm Data": "Computer Science 💻",
+        "AP US History": "APUSH ⚖️",
+        "Found Of Tech": "FOT 🪚",
+        "Mag Precalculus": "Precalculus 📐",
+        "Hon English": "English 📖",
+        "Hon Spanish": "Spanish 🌎"
+    }
 
 
 @dataclass
@@ -36,6 +48,15 @@ class Task:
     def days_overdue(self) -> int:
         """Returns the amount of days a task is overdue."""
         return (datetime.now() - self.due_date).days
+
+
+@dataclass
+class Assignment:
+    """A dataclass used to represent an assignment from Canvas."""
+
+    name: str
+    due_date: datetime | None
+    points_possible: float
 
 
 class NotionProperty:
@@ -118,6 +139,53 @@ class NotionWrapper:
             for task in task_results
         ]
 
+
+class CanvasWrapper:
+    """A synchronous wrapper around the Canvas API for the specific purposes of this bot."""
+    def __init__(self) -> None:
+        self._client = Canvas("https://mcpsmd.instructure.com", getenv("CANVAS_TOKEN"))
+        self.account = self._client.get_current_user()
+        self._courses = self.account.get_courses()
+
+        # Find the current courses that are relevant to the use of the Canvas API.
+        courses_by_date = [
+            (course, datetime.now() - datetime.fromisoformat(course.created_at.removesuffix("Z")))
+            for course in self._courses
+            if not hasattr(course, "access_restricted_by_date")
+        ]
+        _, latest_creation_date = min(courses_by_date, key=itemgetter(1))
+        self.active_courses = [
+            course for course, days_since_created in courses_by_date
+            if days_since_created.days == latest_creation_date.days
+        ]
+
+    def assignments_by_course(self) -> dict[str, list[Assignment]]:
+        """Returns a dictionary containing the course name and the assignments for that course."""
+        assignments = {}
+
+        for course in self.active_courses:
+            assignments[course.name] = []
+
+            for assignment in course.get_assignments():
+                # Skip assignments that don't grant any points or have no due date
+                if not assignment.points_possible or assignment.due_at is None:
+                    continue
+
+                due_date = datetime.fromisoformat(assignment.due_at.removesuffix("Z"))
+
+                # Skip assignments that are due in more than two weeks or were due before today.
+                if (delta := due_date - datetime.now()).days >= 14 or delta.days < 0:
+                    continue
+
+                assignments[course.name].append(
+                    Assignment(
+                        assignment.name.removeprefix("(NR)").removeprefix("(R)").strip(),
+                        datetime.fromisoformat(assignment.due_at.removesuffix("Z")),
+                        assignment.points_possible
+                    )
+                )
+
+        return assignments
 
 
 class DateTransformer(app_commands.Transformer):
